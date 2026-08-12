@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Mechanic">
+  <defs><linearGradient id="a" x1="8" y1="8" x2="57" y2="57"><stop stop-color="#FFD58A"/><stop offset="1" stop-color="#B86B00"/></linearGradient></defs>
+  <path d="m32 4 24 14v28L32 60 8 46V18Z" fill="#0B0D10" stroke="url(#a)" stroke-width="3"/>
+  <path d="M42.5 17.5a11 11 0 0 0-13.7 13.7L17 43l4 4 11.8-11.8a11 11 0 0 0 13.7-13.7l-7 7-4-4Z" fill="#F0A429" stroke="#FFFFFF" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>
