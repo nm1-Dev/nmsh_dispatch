@@ -13,23 +13,7 @@ server_script 'server.lua'
 
 files {
     'html/index.html',
-    'html/style.css',
-    'html/app.js',
-    'html/assets/departments/lspd.svg',
-    'html/assets/departments/nspd.png',
-    'html/assets/departments/ems.svg',
-    'html/assets/departments/mechanic.svg',
-    'html/assets/fonts/barlow-condensed-latin-700-normal.woff2',
-    'html/assets/fonts/barlow-condensed-latin-800-normal.woff2',
-    'html/assets/fonts/inter-latin-400-normal.woff2',
-    'html/assets/fonts/inter-latin-500-normal.woff2',
-    'html/assets/fonts/inter-latin-600-normal.woff2',
     'html/full-dispatch.html',
-    'html/full-dispatch.css',
-    'html/call-management.css',
-    'html/full-dispatch.js',
-    'html/assets/vendor/leaflet/leaflet.css',
-    'html/assets/vendor/leaflet/leaflet.js',
-    'html/assets/vendor/leaflet/images/*.png',
+    'html/build/**/*',
     'html/assets/maps/styleAtlas/**/*.jpg'
 }

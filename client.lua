@@ -84,14 +84,55 @@ local function getUnitSnapshot()
     if vehicle and vehicle ~= 0 then
         local model = GetEntityModel(vehicle)
         local label = GetLabelText(GetDisplayNameFromVehicleModel(model))
+        local vehicleClass = GetVehicleClass(vehicle)
+        local movementType = 'VEHICLE'
+        if IsThisModelABike(model) or vehicleClass == 8 then
+            movementType = 'MOTORCYCLE'
+        elseif IsThisModelAHeli(model) or vehicleClass == 15 then
+            movementType = 'HELICOPTER'
+        elseif IsThisModelAPlane(model) or vehicleClass == 16 then
+            movementType = 'AIRCRAFT'
+        elseif IsThisModelABoat(model) or vehicleClass == 14 then
+            movementType = 'BOAT'
+        elseif IsThisModelATank(model) then
+            movementType = 'TANK'
+        end
         snapshot.vehicle = {
             model = model,
             label = label ~= 'NULL' and label or GetDisplayNameFromVehicleModel(model),
             plate = GetVehicleNumberPlateText(vehicle),
-            class = tostring(GetVehicleClass(vehicle)),
+            class = tostring(vehicleClass),
         }
+        snapshot.movementType = movementType
+    elseif IsPedSwimming(ped) or IsPedSwimmingUnderWater(ped) then
+        snapshot.movementType = 'SWIMMING'
+    else
+        snapshot.movementType = 'ON_FOOT'
     end
     return snapshot
+end
+
+local function getReadableWeaponName()
+    local weapon = GetSelectedPedWeapon(PlayerPedId())
+    if not weapon or weapon == 0 or weapon == joaat('WEAPON_UNARMED') then return nil end
+
+    local labelKey = GetWeaponDisplayNameFromHash(weapon)
+    if labelKey and labelKey ~= '' and labelKey ~= 'NULL' then
+        local label = GetLabelText(labelKey)
+        if label and label ~= '' and label ~= 'NULL' then return label end
+    end
+
+    local groups = {
+        [joaat('GROUP_PISTOL')] = 'Pistol',
+        [joaat('GROUP_SMG')] = 'Submachine Gun',
+        [joaat('GROUP_RIFLE')] = 'Rifle',
+        [joaat('GROUP_SHOTGUN')] = 'Shotgun',
+        [joaat('GROUP_MG')] = 'Machine Gun',
+        [joaat('GROUP_SNIPER')] = 'Sniper Rifle',
+        [joaat('GROUP_HEAVY')] = 'Heavy Weapon',
+        [joaat('GROUP_THROWN')] = 'Thrown Explosive',
+    }
+    return groups[GetWeapontypeGroup(weapon)] or 'Firearm'
 end
 
 local function syncUnit()
@@ -595,6 +636,7 @@ RegisterNetEvent('nmsh_dispatch:client:fullDispatchState', function(state)
         tacticalItems = type(state.tacticalItems) == 'table' and state.tacticalItems or {},
         heatmapEvents = type(state.heatmapEvents) == 'table' and state.heatmapEvents or {},
         waves = type(state.waves) == 'table' and state.waves or { first = 3, last = 10 },
+        service = type(state.service) == 'table' and state.service or {},
         permissions = type(state.permissions) == 'table' and state.permissions or {},
     }
     SendNUIMessage({ action = 'fullDispatchState', state = fullDispatchState })
@@ -725,6 +767,8 @@ RegisterNUICallback('fullDispatchAction', function(data, cb)
         TriggerServerEvent('nmsh_dispatch:server:dispatcherResolveCall', callId)
     elseif action == 'dispatcherSetCallWave' then
         TriggerServerEvent('nmsh_dispatch:server:dispatcherSetCallWave', callId, data.wave)
+    elseif action == 'dispatcherSetCallManagementStatus' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherSetCallManagementStatus', callId, data.status)
     elseif action == 'dispatcherResolveAs' then
         TriggerServerEvent('nmsh_dispatch:server:dispatcherResolveCallAs', callId, data.result)
     elseif action == 'dispatcherArchive' then
@@ -925,7 +969,7 @@ CreateThread(function()
 
             if (settings.alertOnDutyPolice == true or not isOnDutyPolice) and now - lastShootingAlertAt >= cooldown then
                 lastShootingAlertAt = now
-                TriggerServerEvent('nmsh_dispatch:server:reportShooting')
+                TriggerServerEvent('nmsh_dispatch:server:reportShooting', getReadableWeaponName())
             end
             Wait(250)
         else

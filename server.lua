@@ -39,6 +39,10 @@ local detailKeys = {
     weapon = true, vehicle = true, plate = true, color = true, class = true,
     doors = true, direction = true,
 }
+local movementTypes = {
+    ON_FOOT = true, SWIMMING = true, VEHICLE = true, MOTORCYCLE = true, HELICOPTER = true,
+    AIRCRAFT = true, BOAT = true, TANK = true,
+}
 
 local function detectFramework()
     if (Config.Framework == 'qbox' or Config.Framework == 'auto') and GetResourceState('qbx_core') == 'started' then return 'qbox' end
@@ -80,7 +84,21 @@ local function clearDispatcherSession(source)
     end
     if unit then
         unit.isDispatcher = false
+        local previousStatus = unit.dispatcherPreviousStatus
+        -- Dispatcher is a temporary role, never a separate unit status. Restore
+        -- the saved state only when it is still valid for the unit's call link.
+        if previousStatus and unitStatuses[previousStatus] then
+            if unit.currentCallId then
+                if previousStatus == 'ASSIGNED' or previousStatus == 'RESPONDING' or previousStatus == 'ON_SCENE' then
+                    unit.status = previousStatus
+                end
+            elseif previousStatus == 'AVAILABLE' or previousStatus == 'BUSY' or previousStatus == 'OUT_OF_SERVICE' then
+                unit.status = previousStatus
+            end
+        end
         unit.dispatcherPreviousStatus = nil
+        local group = getPatrolGroupForUnit(unit)
+        if group then syncPatrolGroup(group) end
     end
     queueFullDispatchSync()
     return true
@@ -297,6 +315,20 @@ local function addCallTimeline(call, text)
     while #timeline > maximum do table.remove(timeline, 1) end
 end
 
+local function getCallOperationalStatus(call)
+    if not call then return 'NEW' end
+    for _, unit in ipairs(call.respondingUnits or {}) do
+        if unit.status == 'ON_SCENE' then return 'ON_SCENE' end
+    end
+    if #(call.assignedUnits or {}) > 0 then return 'ASSIGNED' end
+    return 'NEW'
+end
+
+local function getCallManagementStatus(call)
+    if call and call.metadata and call.metadata.managementStatus == 'HOLD' then return 'HOLD' end
+    return getCallOperationalStatus(call)
+end
+
 local function toFullDispatchCall(call, viewerDepartment)
     local metadata = call.metadata or {}
     return {
@@ -323,9 +355,11 @@ local function toFullDispatchCall(call, viewerDepartment)
             panic = metadata.panic == true,
             panicAcknowledged = metadata.panicAcknowledged == true,
             wave = tonumber(metadata.wave) or nil,
+            details = copyValue(metadata.details, 1),
             notes = copyValue(metadata.notes, 2),
             timeline = copyValue(metadata.timeline, 2),
             unitHistory = copyValue(metadata.unitHistory, 2),
+            managementStatus = getCallManagementStatus(call),
         },
     }
 end
@@ -335,12 +369,14 @@ local function toFullDispatchUnit(unit)
         id = unit.id,
         callsign = unit.callsign,
         name = unit.name,
+        rank = unit.rank,
         department = unit.department,
         job = unit.job,
         status = unit.status,
         coords = copyValue(unit.coords, 1),
         heading = unit.heading,
         vehicle = copyValue(unit.vehicle, 1),
+        movementType = unit.movementType or 'ON_FOOT',
         radioChannel = unit.radioChannel,
         currentCallId = unit.currentCallId,
         patrolGroupId = unit.patrolGroupId,
@@ -359,6 +395,7 @@ local function toFullDispatchPatrolGroup(group)
         coords = copyValue(group.coords, 1),
         heading = group.heading,
         vehicle = copyValue(group.vehicle, 1),
+        movementType = group.movementType or 'ON_FOOT',
         department = group.department,
         job = group.job,
         radioChannel = group.radioChannel,
@@ -750,6 +787,23 @@ local function getUnitCallsign(source)
     return ('UNIT-%d'):format(source)
 end
 
+local function getUnitRank(source)
+    local job = getJob(source)
+    local grade = job and job.grade
+    if type(grade) == 'table' then
+        for _, candidate in ipairs({ grade.label, grade.name, grade.rank }) do
+            local rank = type(candidate) == 'number' and tostring(candidate) or trimText(candidate, 48)
+            if rank ~= '' then return rank end
+        end
+        local level = tonumber(grade.level or grade.grade)
+        if level ~= nil then return ('Grade %d'):format(math.floor(level)) end
+    elseif type(grade) == 'string' or type(grade) == 'number' then
+        local rank = trimText(tostring(grade), 48)
+        if rank ~= '' then return rank end
+    end
+    return nil
+end
+
 local function updateUnitSnapshot(unit, snapshot)
     snapshot = type(snapshot) == 'table' and snapshot or {}
     local changed = false
@@ -772,6 +826,12 @@ local function updateUnitSnapshot(unit, snapshot)
             unit.vehicle = vehicle
             changed = true
         end
+    end
+    local movementType = type(snapshot.movementType) == 'string' and snapshot.movementType:upper() or 'ON_FOOT'
+    if not movementTypes[movementType] then movementType = 'ON_FOOT' end
+    if unit.movementType ~= movementType then
+        unit.movementType = movementType
+        changed = true
     end
     -- A call wave owns the logical channel while the unit is active on it.
     if snapshot.radioChannel ~= nil and not unit.waveCallId then
@@ -803,6 +863,7 @@ local function registerUnit(source, snapshot)
             coords = nil,
             heading = nil,
             vehicle = nil,
+            movementType = 'ON_FOOT',
             radioChannel = '',
             currentCallId = nil,
         }
@@ -811,9 +872,11 @@ local function registerUnit(source, snapshot)
 
     local callsign = getUnitCallsign(source)
     local name = player.name or ('Unit %d'):format(source)
-    local changed = unit.callsign ~= callsign or unit.name ~= name or unit.department ~= department.department or unit.job ~= job.name
+    local rank = getUnitRank(source)
+    local changed = unit.callsign ~= callsign or unit.name ~= name or unit.rank ~= rank or unit.department ~= department.department or unit.job ~= job.name
     unit.callsign = callsign
     unit.name = name
+    unit.rank = rank
     unit.department = department.department
     unit.job = job.name
     unit.isDispatcher = isDispatcher(source)
@@ -915,6 +978,7 @@ syncPatrolGroup = function(group)
     group.coords = copyValue(leader.coords, 1)
     group.heading = leader.heading
     group.vehicle = copyValue(leader.vehicle, 1)
+    group.movementType = leader.movementType or 'ON_FOOT'
     group.department = leader.department
     group.job = leader.job
     group.radioChannel = leader.radioChannel
@@ -1481,6 +1545,7 @@ local function respondUnitToCall(callId, unitId)
     addCallTimeline(call, ('%s responding'):format(unit.callsign))
     syncUnitReference(call, unit)
     if call.status == 'NEW' then call.status = 'ACTIVE' end
+    if call.metadata.managementStatus ~= 'HOLD' then call.metadata.managementStatus = nil end
     syncUnitState(unit)
     broadcastCall(call, 'nmsh_dispatch:client:updateAlert')
     queueFullDispatchSync()
@@ -1866,6 +1931,30 @@ RegisterNetEvent('nmsh_dispatch:server:dispatcherSetCallWave', function(callId, 
     setCallWave(callId, wave)
 end)
 
+RegisterNetEvent('nmsh_dispatch:server:dispatcherSetCallManagementStatus', function(callId, status)
+    if not dispatcherCall(callId) then return end
+    status = type(status) == 'string' and status:upper() or nil
+    if status ~= 'NEW' and status ~= 'ASSIGNED' and status ~= 'ON_SCENE' and status ~= 'HOLD' then return end
+    local call = calls[callId]
+    if status == 'HOLD' then
+        call.metadata.managementStatus = 'HOLD'
+        call.metadata.managementStatusBeforeHold = getCallOperationalStatus(call)
+        addCallTimeline(call, 'Call placed on hold')
+    else
+        -- New/Assigned/On Scene are calculated from the actual unit rosters;
+        -- accepting a UI-only override here would make the call state lie.
+        local actual = getCallOperationalStatus(call)
+        if call.metadata.managementStatus == 'HOLD' then
+            call.metadata.managementStatus = nil
+            call.metadata.managementStatusBeforeHold = nil
+        end
+        if actual ~= status then return end
+        call.metadata.managementStatus = nil
+    end
+    broadcastCall(call, 'nmsh_dispatch:client:updateAlert')
+    queueFullDispatchSync()
+end)
+
 RegisterNetEvent('nmsh_dispatch:server:dispatcherResolveCallAs', function(callId, result)
     if not dispatcherCall(callId) then return end
     local labels = { CLEARED = 'Cleared', UNFOUNDED = 'Unfounded', NO_UNITS = 'No Units' }
@@ -1941,7 +2030,7 @@ RegisterNetEvent('nmsh_dispatch:server:respondToCall', function(callId)
     respondUnitToCall(callId, unit.id)
 end)
 
-RegisterNetEvent('nmsh_dispatch:server:reportShooting', function()
+RegisterNetEvent('nmsh_dispatch:server:reportShooting', function(weapon)
     local settings = Config.AutomaticAlerts and Config.AutomaticAlerts.shooting
     if not settings or settings.enabled == false then return end
     local job = getJob(source)
@@ -1949,7 +2038,11 @@ RegisterNetEvent('nmsh_dispatch:server:reportShooting', function()
     local now, cooldown = GetGameTimer(), math.max(1000, math.floor(tonumber(settings.cooldown) or 60000))
     if shootingAlertCooldowns[source] and now - shootingAlertCooldowns[source] < cooldown then return end
     shootingAlertCooldowns[source] = now
-    createPredefinedDispatch('Shooting', source)
+    local details = {}
+    weapon = type(weapon) == 'string' and trimText(weapon, 80) or ''
+    if weapon:match('^%-?%d+$') or weapon:upper():find('WEAPON_', 1, true) then weapon = '' end
+    if weapon ~= '' then details.weapon = weapon end
+    createPredefinedDispatch('Shooting', source, { details = details })
 end)
 
 RegisterNetEvent('nmsh_dispatch:server:triggerPanic', function()

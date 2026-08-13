@@ -140,11 +140,11 @@
   letter-spacing: .7px;
 }
 
-.management-status-controls {
+.management-status-controls { 
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-  margin-top: 9px;
+  gap: 5px;
+  margin-top: 7px;
 }
 
 .management-status-controls button,
@@ -164,7 +164,7 @@
   transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
 }
 
-.management-status-controls button { height: 31px; padding: 0 8px; }
+.management-status-controls button { height: 27px; padding: 0 4px; }
 
 .management-status-controls button:hover:not(:disabled),
 .wave-grid button:hover:not(:disabled),
@@ -189,16 +189,16 @@
   color: #d0aa72;
 }
 
-.wave-block { margin-top: 14px; }
+.wave-block { margin-top: 19px; }
 
 .wave-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(32px, 1fr));
-  gap: 6px;
-  margin-top: 8px;
+  gap: 5px;
+  margin-top: 6px;
 }
 
-.wave-grid button { position: relative; height: 31px; font-family: Inter; font-size: 10px; }
+.wave-grid button { position: relative; height: 27px; padding: 0 3px; font-family: Inter; font-size: 10px; }
 .wave-grid button.is-taken { border-color: rgba(183, 96, 102, .25); background: rgba(183, 96, 102, .08); color: #a56b70; cursor: not-allowed; }
 .wave-grid button.is-current { border-color: rgba(95, 156, 118, .45); background: rgba(95, 156, 118, .13); color: #82b794; box-shadow: inset 0 0 0 1px rgba(95, 156, 118, .08); }
 
@@ -206,7 +206,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 7px;
+  margin-top: 6px;
   color: var(--dim);
   font-size: 8px;
   text-transform: uppercase;

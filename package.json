@@ -1,0 +1,43 @@
+{
+  "name": "nmsh-dispatch-ui",
+  "private": true,
+  "version": "1.4.2",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "clean:build": "node scripts/clean-build.mjs",
+    "build": "npm run clean:build && tsc -b && vite build",
+    "typecheck": "tsc -b --pretty false",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@base-ui/react": "latest",
+    "@dnd-kit/core": "^6.3.1",
+    "@hookform/resolvers": "latest",
+    "@tanstack/react-table": "8.21.3",
+    "@tanstack/react-virtual": "3.13.12",
+    "class-variance-authority": "latest",
+    "clsx": "latest",
+    "cmdk": "latest",
+    "leaflet": "latest",
+    "lucide-react": "latest",
+    "motion": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-hook-form": "latest",
+    "tailwind-merge": "latest",
+    "zod": "latest",
+    "zustand": "latest"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "latest",
+    "@types/leaflet": "latest",
+    "@types/node": "24.3.0",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "tailwindcss": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  }
+}
