@@ -63,6 +63,7 @@ const nextButton = document.getElementById('next');
 const respondButton = document.getElementById('respond');
 const respondKey = document.getElementById('respond-key');
 const clearAlertsButton = document.getElementById('clear-alerts');
+const fullDispatchFrame = document.getElementById('full-dispatch-frame');
 
 let selectedIndex = Math.max(0, alerts.length - 1);
 let switchTimer;
@@ -447,11 +448,11 @@ function respondToAlert() {
   if (isNui) postNui('respond');
 }
 
-function postNui(action) {
+function postNui(action, data = {}) {
   fetch(`https://${getNuiResourceName()}/${action}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json; charset=UTF-8' },
-    body: '{}',
+    body: JSON.stringify(data),
   });
 }
 
@@ -489,10 +490,42 @@ window.addEventListener('keydown', (event) => {
   }
 });
 
+function postFullDispatchState(state) {
+  fullDispatchFrame.contentWindow?.postMessage({ channel: 'nmsh_dispatch:full', type: 'state', state }, '*');
+}
+
+window.addEventListener('message', (event) => {
+  const message = event.data || {};
+  if (event.source !== fullDispatchFrame.contentWindow || message.channel !== 'nmsh_dispatch:full') return;
+  if (message.type === 'ready') {
+    if (isNui) postNui('fullDispatchReady');
+    return;
+  }
+  if (message.type === 'close' && isNui) {
+    postNui('fullDispatchClose');
+    return;
+  }
+  if (message.type === 'action' && isNui) postNui('fullDispatchAction', message.payload || {});
+});
+
 window.addEventListener('message', (event) => {
   if (!isNui) return;
 
   const message = event.data || {};
+  if (message.action === 'fullDispatch') {
+    fullDispatchFrame.hidden = message.open !== true;
+    if (message.open === true) {
+      fullDispatchFrame.contentWindow?.postMessage({ channel: 'nmsh_dispatch:full', type: 'resetSelection' }, '*');
+    }
+    if (message.open === true && message.state) postFullDispatchState(message.state);
+    return;
+  }
+
+  if (message.action === 'fullDispatchState') {
+    postFullDispatchState(message.state || { calls: [], units: [] });
+    return;
+  }
+
   if (message.action === 'hide') {
     clearArrivalEffect();
     detailsExpanded = false;

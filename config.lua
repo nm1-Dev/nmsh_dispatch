@@ -6,21 +6,71 @@ Config.Framework = 'auto'
 Config.MaxAlerts = 0 -- 0 = no automatic limit; use a positive number to cap local alerts
 Config.RequireOnDuty = true -- configured jobs only receive alerts while on duty
 
--- Alerts are memory-only. They are removed from every recipient when this time passes.
--- Set enabled = false to keep alerts until they are cleared manually.
+-- On-duty personnel are represented by lightweight, in-memory units. This is the
+-- foundation for the future Dispatch screen; it does not create map markers or UI.
+Config.Units = {
+    enabled = true,
+    syncInterval = 5000, -- milliseconds; client position/vehicle snapshot interval
+    cleanupInterval = 30000, -- milliseconds; server duty/job reconciliation interval
+    callsignMetadataKey = 'callsign', -- PlayerData.metadata field; falls back to UNIT-<source>
+    defaultStatus = 'AVAILABLE',
+}
+
+-- Patrol groups are temporary, server-authoritative unit collections managed
+-- by configured dispatchers. They remain memory-only, like the Unit Core.
+Config.PatrolGroups = {
+    minimumMembers = 2,
+}
+
+-- Travel behavior for units assigned to a call. The client only checks distance
+-- while its own unit is RESPONDING; the server validates every ON_SCENE change.
+Config.AutoWaypoint = true
+Config.AutoOnScene = true
+Config.OnSceneRadius = 40.0 -- GTA units; change to suit your server's call locations
+Config.OnSceneCheckInterval = 1000 -- milliseconds
+
+-- This controls only the local Small HUD notification lifetime. It never
+-- resolves, archives, or removes the underlying Dispatch call. PANIC calls
+-- intentionally do not receive a HUD expiry.
 Config.AlertExpiration = {
     enabled = true,
     defaultSeconds = 180,
-    panicSeconds = 300,
-    checkInterval = 5000,
     minimumSeconds = 30,
     maximumSeconds = 3600,
+}
+
+-- Resolved and archived calls remain available to dispatchers for the current
+-- resource session only. No database persistence is used yet.
+Config.History = {
+    maxTimelineEntries = 40,
+}
+
+-- Heatmap data is derived from resolved/archived calls in the current session.
+Config.Heatmap = {
+    enabled = true,
+    maxPoints = 500,
 }
 
 Config.Panel = {
     showByDefault = true, -- show the empty dispatch panel after player load/resource restart
     toggleCommand = 'nmshDispatchToggle',
     defaultToggleKey = 'K', -- configurable in FiveM Settings > Key Bindings
+}
+
+Config.FullDispatch = {
+    command = 'nmshFullDispatch',
+    defaultKey = 'F6', -- configurable in FiveM Settings > Key Bindings
+}
+
+-- Dispatcher Mode is a temporary, server-authoritative session role. It is
+-- never granted automatically by job grade and is cleared when a player leaves,
+-- goes off duty, or changes to an invalid job.
+Config.Dispatcher = {
+    enabled = true,
+    allowedJobs = { police = true, ambulance = true, mechanic = true },
+    AllowSelfJoin = true,
+    MaxDispatchers = 0, -- 0 = unlimited
+    forceUnitStatus = false,
 }
 
 Config.Brand = {
@@ -100,6 +150,23 @@ Config.Respond = {
     defaultKey = 'G',
 }
 
+-- Dispatch waves use their literal radio channel number. For example, WAVE-3
+-- is radio channel 3. pma-voice is optional; without it, waves remain logical.
+Config.Waves = {
+    first = 3,
+    last = 10,
+    channels = {
+        [3] = 'WAVE-3', [4] = 'WAVE-4', [5] = 'WAVE-5', [6] = 'WAVE-6',
+        [7] = 'WAVE-7', [8] = 'WAVE-8', [9] = 'WAVE-9', [10] = 'WAVE-10',
+    },
+    -- Optional pma-voice mapping. Keep these equal to the Wave number unless
+    -- your radio plan intentionally uses a different channel number.
+    pmaChannels = {
+        [3] = 3, [4] = 4, [5] = 5, [6] = 6,
+        [7] = 7, [8] = 8, [9] = 9, [10] = 10,
+    },
+}
+
 Config.Panic = {
     enabled = true,
     command = 'panic',
@@ -138,6 +205,7 @@ Config.AutomaticAlerts = {
 -- A custom CreateDispatch payload can override these values with its `blip` field.
 Config.Blips = {
     enabled = true,
+    durationSeconds = 0, -- 0 = stays until the call is resolved; per-call blip.duration overrides this.
     sprite = 161, -- fallback only for custom CreateDispatch calls without a blip table
     scale = 0.8,
     colour = 1,

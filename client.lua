@@ -9,10 +9,15 @@ local manualPanelOpen = false
 local panelSuppressedByUser = false
 local dismissedAlertIds = {}
 local alertBlips = {}
+local alertBlipExpiryTokens = {}
 local respondControlHash = joaat('+' .. Config.Respond.command) | 0x80000000
 local lastRespondKey
 local lastAlertSoundAt = 0
 local lastShootingAlertAt = 0
+local unitState = { status = 'AVAILABLE', currentCallId = nil, callCoords = nil }
+local lastOnSceneAttemptAt = 0
+local fullDispatchOpen = false
+local fullDispatchState = { calls = {}, units = {}, patrolGroups = {}, tacChannels = {}, tacticalItems = {}, heatmapEvents = {}, waves = { first = 3, last = 10 } }
 
 local function detectFramework()
     if (Config.Framework == 'qbox' or Config.Framework == 'auto') and GetResourceState('qbx_core') == 'started' then
@@ -59,6 +64,65 @@ local function canReceiveAlerts(job)
         and (not Config.RequireOnDuty or job.onduty == true)
 end
 
+local function getUnitSnapshot()
+    local ped = PlayerPedId()
+    if not ped or ped == 0 then return {} end
+
+    local coords = GetEntityCoords(ped)
+    local snapshot = {
+        coords = { x = coords.x, y = coords.y, z = coords.z },
+        heading = GetEntityHeading(ped),
+        vehicle = false,
+    }
+    -- pma-voice replicates the live radio through this state bag. It is
+    -- intentionally optional, so standalone Waves continue without pma-voice.
+    if GetResourceState('pma-voice') == 'started' then
+        local channel = tonumber(LocalPlayer.state.radioChannel)
+        if channel then snapshot.radioChannel = channel end
+    end
+    local vehicle = GetVehiclePedIsIn(ped, false)
+    if vehicle and vehicle ~= 0 then
+        local model = GetEntityModel(vehicle)
+        local label = GetLabelText(GetDisplayNameFromVehicleModel(model))
+        snapshot.vehicle = {
+            model = model,
+            label = label ~= 'NULL' and label or GetDisplayNameFromVehicleModel(model),
+            plate = GetVehicleNumberPlateText(vehicle),
+            class = tostring(GetVehicleClass(vehicle)),
+        }
+    end
+    return snapshot
+end
+
+local function syncUnit()
+    if dispatchEnabled and Config.Units and Config.Units.enabled ~= false then
+        TriggerServerEvent('nmsh_dispatch:server:syncUnit', getUnitSnapshot())
+    end
+end
+
+local function findFullDispatchCall(callId)
+    for _, call in ipairs(fullDispatchState.calls or {}) do
+        if call.id == callId then return call end
+    end
+end
+
+local function closeFullDispatch()
+    if not fullDispatchOpen then return end
+    fullDispatchOpen = false
+    TriggerServerEvent('nmsh_dispatch:server:closeFullDispatch')
+    SendNUIMessage({ action = 'fullDispatch', open = false })
+    SetNuiFocus(cursorActive, cursorActive)
+end
+
+local function openFullDispatch()
+    currentJob = getPlayerJob()
+    if not dispatchEnabled then return end
+    fullDispatchOpen = true
+    SetNuiFocus(true, true)
+    SendNUIMessage({ action = 'fullDispatch', open = true })
+    TriggerServerEvent('nmsh_dispatch:server:openFullDispatch')
+end
+
 local function closeCursor()
     if not cursorActive then return end
     cursorActive = false
@@ -70,6 +134,7 @@ local function removeAlertBlip(alertId)
     local blip = alertBlips[alertId]
     if blip and DoesBlipExist(blip) then RemoveBlip(blip) end
     alertBlips[alertId] = nil
+    alertBlipExpiryTokens[alertId] = (alertBlipExpiryTokens[alertId] or 0) + 1
 end
 
 local function removeAllAlertBlips()
@@ -106,6 +171,15 @@ local function createAlertBlip(alert)
     AddTextComponentString(label)
     EndTextCommandSetBlipName(blip)
     alertBlips[alertId] = blip
+
+    local duration = tonumber(custom.durationSeconds or custom.duration or settings.durationSeconds)
+    if duration and duration > 0 then
+        local token = alertBlipExpiryTokens[alertId] or 0
+        CreateThread(function()
+            Wait(math.floor(duration * 1000))
+            if alertBlipExpiryTokens[alertId] == token then removeAlertBlip(alertId) end
+        end)
+    end
 end
 
 local function clearAlerts(preservePanel)
@@ -195,6 +269,10 @@ local function updateDispatchAccess(job, loaded)
     dispatchEnabled = playerLoaded and canReceiveAlerts(currentJob) or false
 
     if not dispatchEnabled then
+        TriggerServerEvent('nmsh_dispatch:server:validateDispatcherSession')
+        closeFullDispatch()
+        unitState = { status = 'AVAILABLE', currentCallId = nil, callCoords = nil }
+        TriggerServerEvent('nmsh_dispatch:server:removeUnit')
         panelSuppressedByUser = false
         local jobChanged = previousJobName ~= (currentJob and currentJob.name)
         local dutyChanged = previousDuty ~= (currentJob and currentJob.onduty)
@@ -208,6 +286,9 @@ local function updateDispatchAccess(job, loaded)
         clearAlerts(true)
         if manualPanelOpen then showEmptyPanel() end
     end
+
+    syncUnit()
+    TriggerServerEvent('nmsh_dispatch:server:validateDispatcherSession')
 end
 
 local function currentAlert()
@@ -229,12 +310,12 @@ local function applyResponderState(alert)
     end
 end
 
-local function removeAlertById(alertId)
+local function removeAlertById(alertId, removeBlip)
     if type(alertId) ~= 'string' or alertId == '' then return end
 
     for index = #alerts, 1, -1 do
         if alerts[index].id == alertId then
-            removeAlertBlip(alertId)
+            if removeBlip ~= false then removeAlertBlip(alertId) end
             table.remove(alerts, index)
             if selectedIndex > #alerts then selectedIndex = #alerts end
             if selectedIndex < 1 then selectedIndex = 1 end
@@ -242,6 +323,21 @@ local function removeAlertById(alertId)
             return
         end
     end
+end
+
+local function applyHudExpiry(alert, previousAlert)
+    if type(alert) ~= 'table' then return end
+    if previousAlert and previousAlert.hudExpiryAt then
+        alert.hudExpiryAt = previousAlert.hudExpiryAt
+        return
+    end
+
+    local expiresAt = tonumber(alert.expiresAt)
+    if alert.panic == true or not expiresAt then return end
+    local cloudTime = type(GetCloudTimeAsInt) == 'function' and tonumber(GetCloudTimeAsInt()) or nil
+    local fallbackLifetime = math.max(0, expiresAt - (tonumber(alert.timestamp) or expiresAt))
+    local remainingSeconds = cloudTime and cloudTime > 0 and math.max(0, expiresAt - cloudTime) or fallbackLifetime
+    alert.hudExpiryAt = GetGameTimer() + (remainingSeconds * 1000)
 end
 
 syncUi = function(action)
@@ -312,7 +408,9 @@ local function respondToAlert()
     alert.responding = true
     alert.responders = alert.responders or {}
     alert.responders[#alert.responders + 1] = { source = GetPlayerServerId(PlayerId()), isLocal = true }
-    SetNewWaypoint(alert.coords.x + 0.0, alert.coords.y + 0.0)
+    if Config.AutoWaypoint ~= false then
+        SetNewWaypoint(alert.coords.x + 0.0, alert.coords.y + 0.0)
+    end
     TriggerServerEvent('nmsh_dispatch:server:respondToCall', alert.id)
     syncUi('respond')
 end
@@ -323,6 +421,23 @@ local function getLocation(coords)
     local crossing = crossingHash ~= 0 and GetStreetNameFromHashKey(crossingHash) or ''
     local area = GetLabelText(GetNameOfZone(coords.x, coords.y, coords.z))
     return street, area == 'NULL' and '' or area, crossing
+end
+
+local function populateCallLocation(call, syncToServer)
+    if type(call) ~= 'table' or type(call.coords) ~= 'table' then return end
+    local street, area = getLocation(call.coords)
+    local changed = false
+    if (type(call.street) ~= 'string' or call.street == '') and street ~= '' then
+        call.street = street
+        changed = true
+    end
+    if (type(call.area) ~= 'string' or call.area == '') and area ~= '' then
+        call.area = area
+        changed = true
+    end
+    if changed and syncToServer and type(call.id) == 'string' then
+        TriggerServerEvent('nmsh_dispatch:server:resolveCallLocation', call.id, call.street, call.area)
+    end
 end
 
 local vehicleClasses = {
@@ -395,11 +510,13 @@ RegisterNetEvent('nmsh_dispatch:client:addAlert', function(alert)
 
     if alert.id and dismissedAlertIds[alert.id] then return end
 
+    populateCallLocation(alert, true)
     applyResponderState(alert)
     playAlertSound(alert)
 
     for index = 1, #alerts do
         if alerts[index].id == alert.id then
+            applyHudExpiry(alert, alerts[index])
             createAlertBlip(alert)
             alerts[index] = alert
             selectedIndex = index
@@ -408,6 +525,7 @@ RegisterNetEvent('nmsh_dispatch:client:addAlert', function(alert)
         end
     end
 
+    applyHudExpiry(alert)
     table.insert(alerts, alert)
     while Config.MaxAlerts > 0 and #alerts > Config.MaxAlerts do
         local removed = table.remove(alerts, 1)
@@ -422,9 +540,11 @@ end)
 RegisterNetEvent('nmsh_dispatch:client:updateAlert', function(alert)
     if type(alert) ~= 'table' or type(alert.id) ~= 'string' then return end
 
+    populateCallLocation(alert, true)
     for index = 1, #alerts do
         if alerts[index].id == alert.id then
             applyResponderState(alert)
+            applyHudExpiry(alert, alerts[index])
             alerts[index] = alert
             createAlertBlip(alert)
             syncUi('update')
@@ -435,6 +555,49 @@ end)
 
 RegisterNetEvent('nmsh_dispatch:client:removeAlert', function(alertId)
     removeAlertById(alertId)
+end)
+
+CreateThread(function()
+    while true do
+        Wait(1000)
+        local now = GetGameTimer()
+        for index = #alerts, 1, -1 do
+            local alert = alerts[index]
+            if alert.panic ~= true and tonumber(alert.hudExpiryAt) and tonumber(alert.hudExpiryAt) <= now then
+                removeAlertById(alert.id, false) -- HUD expiry must not remove its independent map blip.
+            end
+        end
+    end
+end)
+
+RegisterNetEvent('nmsh_dispatch:client:unitState', function(state)
+    if type(state) ~= 'table' then return end
+    unitState = {
+        status = type(state.status) == 'string' and state.status or 'AVAILABLE',
+        currentCallId = type(state.currentCallId) == 'string' and state.currentCallId or nil,
+        callCoords = type(state.callCoords) == 'table' and state.callCoords or nil,
+    }
+
+    if Config.AutoWaypoint ~= false and unitState.status == 'RESPONDING' and unitState.callCoords then
+        SetNewWaypoint(unitState.callCoords.x + 0.0, unitState.callCoords.y + 0.0)
+    end
+end)
+
+RegisterNetEvent('nmsh_dispatch:client:fullDispatchState', function(state)
+    if not fullDispatchOpen or type(state) ~= 'table' then return end
+    local calls = type(state.calls) == 'table' and state.calls or {}
+    for _, call in ipairs(calls) do populateCallLocation(call, true) end
+    fullDispatchState = {
+        calls = calls,
+        units = type(state.units) == 'table' and state.units or {},
+        patrolGroups = type(state.patrolGroups) == 'table' and state.patrolGroups or {},
+        tacChannels = type(state.tacChannels) == 'table' and state.tacChannels or {},
+        tacticalItems = type(state.tacticalItems) == 'table' and state.tacticalItems or {},
+        heatmapEvents = type(state.heatmapEvents) == 'table' and state.heatmapEvents or {},
+        waves = type(state.waves) == 'table' and state.waves or { first = 3, last = 10 },
+        permissions = type(state.permissions) == 'table' and state.permissions or {},
+    }
+    SendNUIMessage({ action = 'fullDispatchState', state = fullDispatchState })
 end)
 
 RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
@@ -493,6 +656,89 @@ RegisterNUICallback('clearAlerts', function(_, cb)
     cb({ ok = true })
 end)
 
+RegisterNUICallback('fullDispatchReady', function(_, cb)
+    if fullDispatchOpen then TriggerServerEvent('nmsh_dispatch:server:openFullDispatch') end
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('fullDispatchClose', function(_, cb)
+    closeFullDispatch()
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('fullDispatchAction', function(data, cb)
+    local action = type(data) == 'table' and data.action or nil
+    local callId = type(data) == 'table' and data.callId or nil
+    local unitId = type(data) == 'table' and data.unitId or nil
+    if action == 'gps' then
+        local call = type(callId) == 'string' and findFullDispatchCall(callId) or nil
+        if call and type(call.coords) == 'table' then
+            SetNewWaypoint(call.coords.x + 0.0, call.coords.y + 0.0)
+        end
+    elseif action == 'assign' then
+        TriggerServerEvent('nmsh_dispatch:server:fullDispatchAssign', callId, unitId)
+    elseif action == 'unassign' then
+        TriggerServerEvent('nmsh_dispatch:server:fullDispatchUnassign', callId, unitId)
+    elseif action == 'respond' then
+        TriggerServerEvent('nmsh_dispatch:server:fullDispatchRespond', callId, unitId)
+    elseif action == 'setDispatcherSession' then
+        TriggerServerEvent('nmsh_dispatch:server:setDispatcherSession', data.enabled == true)
+    elseif action == 'patrolCreate' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherCreatePatrolGroup', data.patrol)
+    elseif action == 'patrolAddMember' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherAddPatrolMember', data.groupId, unitId)
+    elseif action == 'patrolRemoveMember' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherRemovePatrolMember', data.groupId, unitId)
+    elseif action == 'patrolSetLeader' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherSetPatrolLeader', data.groupId, unitId)
+    elseif action == 'patrolDisband' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherDisbandPatrolGroup', data.groupId)
+    elseif action == 'tacCreate' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherCreateTacChannel', data.channel)
+    elseif action == 'tacClose' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherCloseTacChannel', data.channelId)
+    elseif action == 'tacAssignCall' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherAssignCallTac', data.channelId, callId)
+    elseif action == 'tacAssignTarget' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherAssignTacTarget', data.channelId, unitId)
+    elseif action == 'tacRemoveTarget' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherRemoveTacTarget', data.channelId, unitId)
+    elseif action == 'tacJoin' then
+        TriggerServerEvent('nmsh_dispatch:server:joinTacChannel', data.channelId)
+    elseif action == 'tacLeave' then
+        TriggerServerEvent('nmsh_dispatch:server:leaveTacChannel')
+    elseif action == 'tacticalVisibility' then
+        TriggerServerEvent('nmsh_dispatch:server:setTacticalOverlayVisibility', data.visible)
+    elseif action == 'tacticalCreate' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherCreateTacticalItem', data.item)
+    elseif action == 'tacticalUpdate' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherUpdateTacticalItem', data.itemId, data.item)
+    elseif action == 'tacticalDelete' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherDeleteTacticalItem', data.itemId)
+    elseif action == 'tacticalClear' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherClearTacticalItems')
+    elseif action == 'dispatcherCreate' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherCreateCall', data.call)
+    elseif action == 'dispatcherEdit' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherEditCall', callId, data.updates)
+    elseif action == 'dispatcherResolve' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherResolveCall', callId)
+    elseif action == 'dispatcherSetCallWave' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherSetCallWave', callId, data.wave)
+    elseif action == 'dispatcherResolveAs' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherResolveCallAs', callId, data.result)
+    elseif action == 'dispatcherArchive' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherArchiveCall', callId)
+    elseif action == 'dispatcherReopen' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherReopenCall', callId)
+    elseif action == 'dispatcherNote' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherAddNote', callId, data.note)
+    elseif action == 'dispatcherAcknowledgePanic' then
+        TriggerServerEvent('nmsh_dispatch:server:dispatcherAcknowledgePanic', callId)
+    end
+    cb({ ok = true })
+end)
+
 CreateThread(function()
     SetNuiFocus(false, false)
     clearAlerts()
@@ -537,6 +783,50 @@ CreateThread(function()
     end
 end)
 
+CreateThread(function()
+    while true do
+        if fullDispatchOpen then
+            Wait(0)
+            DisableControlAction(0, 200, true) -- ESC / pause; Full Dispatch owns this key while open.
+            if IsDisabledControlJustReleased(0, 200) then closeFullDispatch() end
+        else
+            Wait(250)
+        end
+    end
+end)
+
+CreateThread(function()
+    while true do
+        local settings = Config.Units or {}
+        Wait(math.max(1000, math.floor(tonumber(settings.syncInterval) or 5000)))
+        syncUnit()
+    end
+end)
+
+CreateThread(function()
+    while true do
+        Wait(math.max(250, math.floor(tonumber(Config.OnSceneCheckInterval) or 1000)))
+        if Config.AutoOnScene ~= false and unitState.status == 'RESPONDING' and unitState.currentCallId and unitState.callCoords then
+            local coords = GetEntityCoords(PlayerPedId())
+            local target = unitState.callCoords
+            local radius = math.max(1.0, tonumber(Config.OnSceneRadius) or 40.0)
+            local x, y, z = coords.x - target.x, coords.y - target.y, coords.z - target.z
+            local now = GetGameTimer()
+            if (x * x) + (y * y) + (z * z) <= radius * radius and now - lastOnSceneAttemptAt >= 1000 then
+                lastOnSceneAttemptAt = now
+                TriggerServerEvent('nmsh_dispatch:server:unitOnScene', unitState.currentCallId)
+            end
+        end
+    end
+end)
+
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName == GetCurrentResourceName() then
+        TriggerServerEvent('nmsh_dispatch:server:closeFullDispatch')
+        TriggerServerEvent('nmsh_dispatch:server:removeUnit')
+    end
+end)
+
 
 RegisterCommand(Config.Cursor.command, function()
     if cursorActive then
@@ -567,6 +857,13 @@ end, false)
 
 RegisterCommand('-' .. Config.Panel.toggleCommand, function() end, false)
 RegisterKeyMapping('+' .. Config.Panel.toggleCommand, 'Dispatch: toggle Small Dispatch panel', 'keyboard', Config.Panel.defaultToggleKey)
+
+RegisterCommand('+' .. Config.FullDispatch.command, function()
+    if not IsPauseMenuActive() then openFullDispatch() end
+end, false)
+
+RegisterCommand('-' .. Config.FullDispatch.command, function() end, false)
+RegisterKeyMapping('+' .. Config.FullDispatch.command, 'Dispatch: open Full Dispatch', 'keyboard', Config.FullDispatch.defaultKey)
 
 RegisterCommand(Config.Panic.command, function()
     if Config.Panic.enabled ~= false and not IsPauseMenuActive() then

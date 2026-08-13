@@ -41,12 +41,51 @@ local success, callId = exports['nmsh_dispatch']:CreateCall(data)
 exports['nmsh_dispatch']:UpdateCall(callId, { status = 'ACTIVE', description = 'Units requested.' })
 exports['nmsh_dispatch']:ResolveCall(callId)
 exports['nmsh_dispatch']:ArchiveCall(callId)
-exports['nmsh_dispatch']:RemoveCall(callId)
+exports['nmsh_dispatch']:RemoveCall(callId) -- removes resolved/archived history only
 
 local call = exports['nmsh_dispatch']:GetCall(callId)
 ```
 
 Statuses are `NEW`, `ACTIVE`, `RESOLVED`, and `ARCHIVED`. Resolved and archived calls are removed from the Small HUD; no database persistence is used.
+
+## Unit Core (server only)
+
+On-duty jobs configured in `Config.Departments` automatically register a memory-only unit. The server verifies the Qbox/QBCore job and duty state before accepting every unit sync. A unit contains `id`, `source`, `callsign`, `name`, `department`, `job`, `status`, `coords`, `heading`, `vehicle`, `radioChannel`, and `currentCallId`.
+
+```lua
+local ok, unit = exports['nmsh_dispatch']:RegisterUnit(source, {
+    radioChannel = '1',
+})
+
+exports['nmsh_dispatch']:UpdateUnit(unit.id, {
+    status = 'BUSY',
+})
+
+local oneUnit = exports['nmsh_dispatch']:GetUnit(unit.id)
+local allUnits = exports['nmsh_dispatch']:GetUnits()
+exports['nmsh_dispatch']:RemoveUnit(source)
+```
+
+Unit statuses are `AVAILABLE`, `ASSIGNED`, `RESPONDING`, `ON_SCENE`, `BUSY`, and `OUT_OF_SERVICE`. Responding from the Small HUD sets that officer's current unit to `RESPONDING` for the call; resolving or archiving the call returns related units to `AVAILABLE`. Units are removed safely when they go off duty, change to an unconfigured job, disconnect, or stop the resource. Use `Config.Units` to adjust the sync interval and callsign metadata field.
+
+## Call Assignment (server only)
+
+Assignments are validated on the server. A unit can have one active call at a time, cannot be assigned twice, and must match the call's eligible jobs. Assigning sets `ASSIGNED`; responding sets `RESPONDING`; `ON_SCENE` is allowed only after responding. Unassigning safely removes the unit from both rosters and returns it to `AVAILABLE` when appropriate.
+
+```lua
+local ok = exports['nmsh_dispatch']:AssignUnitToCall(callId, unitId)
+exports['nmsh_dispatch']:UpdateUnitStatus(unitId, 'RESPONDING', callId)
+exports['nmsh_dispatch']:UpdateUnitStatus(unitId, 'ON_SCENE', callId)
+exports['nmsh_dispatch']:UnassignUnitFromCall(callId, unitId)
+
+local rosters = exports['nmsh_dispatch']:GetCallUnits(callId)
+```
+
+Client events `nmsh_dispatch:server:assignUnitToCall` and `nmsh_dispatch:server:unassignUnitFromCall` only operate on the sender's own unit. Use server exports for dispatcher-controlled assignments.
+
+## Auto On-Scene
+
+`Config.AutoWaypoint` sets a GPS waypoint when a unit becomes `RESPONDING`. With `Config.AutoOnScene = true`, the client checks only its own responding unit at `Config.OnSceneCheckInterval`; when it enters `Config.OnSceneRadius`, it asks the server to mark the unit `ON_SCENE`. The server verifies the current call, assignment state, and the latest synced unit coordinates before applying the status.
 
 ## Create a call from a client script
 
@@ -168,5 +207,5 @@ Server exports `GetPlayerData(source)` and `GetPlayerInfo(source)` return a comp
 | `priority` | No | `low`, `med`, `high`, `panic`, or numeric `3`, `2`, `1`. |
 | `panic` | No | `true` forces PANIC priority and the panic arrival treatment. |
 | `details` | No | HUD fields: `name`, `phone`, `incident`, `street`, `gender`, `weapon`, `vehicle`, `plate`, `color`, `class`, `doors`, `direction`. Empty fields are never rendered. |
-| `durationSeconds` / `duration` | No | Alert lifetime in seconds; limited by `Config.AlertExpiration`. |
-| `flashes`, `image`, `blip`, `otherData` | No | `blip` overrides the automatic map blip for recipients. `image` and `otherData` are kept for future MDT integrations; `otherData` accepts `{ { text = '...', icon = '...' } }`. |
+| `durationSeconds` / `duration` | No | Small HUD lifetime in seconds only; it never expires the Dispatch call. PANIC calls ignore this value. |
+| `flashes`, `image`, `blip`, `otherData` | No | `blip` overrides the automatic map blip for recipients. Use `blip.durationSeconds` or `blip.duration` to expire only that blip. `image` and `otherData` are kept for future MDT integrations; `otherData` accepts `{ { text = '...', icon = '...' } }`. |
