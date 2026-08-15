@@ -9,7 +9,13 @@
   z-index: 100;
   display: grid;
   place-items: center;
-  background: rgba(5, 8, 11, 0.56);
+  background: transparent;
+}
+
+/* The small HUD must not dim the gameplay canvas. Full Dispatch owns its
+   backdrop locally, so the legacy global NUI veil is intentionally disabled. */
+body.is-nui:before {
+  display: none;
 }
 .hud-positioner {
   position: fixed;
@@ -232,7 +238,7 @@
 }
 
 .full-dispatch-backdrop::before {
-  content: "";
+  content: none;
   position: fixed;
   inset: 0;
   pointer-events: none;
@@ -440,6 +446,82 @@
 .full-dispatch-backdrop .operations-tabs span {
   border: 1px solid rgba(125, 162, 187, 0.16);
   background: rgba(102, 138, 165, 0.1);
+}
+
+/* TAC stays inside the narrow operations sidebar: no fixed-width form or
+   inherited action-grid layout. */
+.full-dispatch-backdrop .tac-list {
+  overflow-x: hidden;
+}
+.full-dispatch-backdrop .tac-create-actions {
+  padding: 8px 10px 0;
+}
+.full-dispatch-backdrop .tac-create-actions button,
+.full-dispatch-backdrop .tac-form > button {
+  width: 100%;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(125, 162, 187, 0.42);
+  border-radius: 5px;
+  background: rgba(102, 138, 165, 0.1);
+  color: #a8c0cf;
+  font: 700 9px "Barlow Condensed", Arial, sans-serif;
+  letter-spacing: 0.55px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.full-dispatch-backdrop .tac-create-actions button:hover,
+.full-dispatch-backdrop .tac-form > button:hover:not(:disabled) {
+  border-color: rgba(125, 162, 187, 0.64);
+  background: rgba(102, 138, 165, 0.17);
+  color: var(--command-text);
+}
+.full-dispatch-backdrop .tac-form {
+  width: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 7px;
+  margin: 8px 10px 10px;
+  padding: 9px;
+  border: 1px solid var(--command-border-soft);
+  border-radius: 6px;
+  background: rgba(8, 14, 19, 0.64);
+}
+.full-dispatch-backdrop .tac-form label {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.full-dispatch-backdrop .tac-form label > span {
+  color: #7f929f;
+  font: 700 8px "Barlow Condensed", Arial, sans-serif;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+}
+.full-dispatch-backdrop .tac-form input {
+  width: 100%;
+  min-width: 0;
+  height: 29px;
+  padding: 0 8px;
+  border: 1px solid var(--command-border);
+  border-radius: 4px;
+  outline: 0;
+  background: #0b1218;
+  color: var(--command-text);
+  font-size: 10px;
+}
+.full-dispatch-backdrop .tac-form input:focus {
+  border-color: rgba(125, 162, 187, 0.58);
+}
+.full-dispatch-backdrop .tac-form > button {
+  grid-column: 1 / -1;
+}
+.full-dispatch-backdrop .tac-form > button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
 }
 .full-dispatch-backdrop .filter-block {
   padding: 12px;
@@ -736,6 +818,25 @@
 .full-dispatch-backdrop .map-stage,
 .full-dispatch-backdrop #leaflet-map,
 .full-dispatch-backdrop .leaflet-container { background: #091016; }
+.full-dispatch-backdrop #leaflet-map {
+  z-index: 0;
+  overflow: hidden;
+}
+/* Restore Leaflet's pane hierarchy. The legacy blanket z-index caused the
+   tile layer to render above the dispatch map controls at some zoom levels. */
+.full-dispatch-backdrop .leaflet-tile-pane { z-index: 200; }
+.full-dispatch-backdrop .leaflet-overlay-pane { z-index: 400; }
+.full-dispatch-backdrop .leaflet-shadow-pane { z-index: 500; }
+.full-dispatch-backdrop .leaflet-marker-pane { z-index: 600; }
+.full-dispatch-backdrop .leaflet-tooltip-pane { z-index: 650; }
+.full-dispatch-backdrop .leaflet-popup-pane { z-index: 700; }
+.full-dispatch-backdrop .leaflet-top,
+.full-dispatch-backdrop .leaflet-bottom { z-index: 800; }
+.full-dispatch-backdrop .map-legend,
+.full-dispatch-backdrop .map-scale,
+.full-dispatch-backdrop .tactical-toolbar,
+.full-dispatch-backdrop .tactical-items,
+.full-dispatch-backdrop .heatmap-control { z-index: 900; }
 .full-dispatch-backdrop .leaflet-tile {
   filter: brightness(0.51) saturate(0.61) contrast(1.11) hue-rotate(-4deg);
 }

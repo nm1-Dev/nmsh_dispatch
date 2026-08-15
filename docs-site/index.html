@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a0e12" />
+    <meta name="description" content="NMSH Dispatch documentation — server-authoritative calls, units, waves and integrations for FiveM." />
+    <title>NMSH Dispatch — Documentation</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar" aria-label="Documentation navigation">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true"><span>N</span></div>
+          <div>
+            <div class="brand-name">NMSH</div>
+            <div class="brand-product">DISPATCH <span>DOCS</span></div>
+          </div>
+          <button class="icon-button sidebar-close" id="sidebar-close" aria-label="Close navigation">×</button>
+        </div>
+        <div class="version-chip"><span class="status-dot"></span> v1.4 · stable</div>
+        <label class="sidebar-search" for="sidebar-search-input">
+          <span class="icon">⌕</span>
+          <input id="sidebar-search-input" type="search" placeholder="Search docs" autocomplete="off" />
+          <kbd>⌘ K</kbd>
+        </label>
+        <nav id="side-nav"></nav>
+        <div class="sidebar-foot">
+          <a href="https://discord.gg/" target="_blank" rel="noreferrer">Community support <span>↗</span></a>
+          <a href="https://github.com/" target="_blank" rel="noreferrer">API reference <span>↗</span></a>
+        </div>
+      </aside>
+
+      <div class="mobile-scrim" id="mobile-scrim"></div>
+      <main class="main-shell">
+        <header class="topbar">
+          <button class="icon-button menu-button" id="menu-button" aria-label="Open navigation">☰</button>
+          <div class="breadcrumbs" id="breadcrumbs"><span>NMSH Dispatch</span><i>/</i><strong>Overview</strong></div>
+          <div class="topbar-actions">
+            <button class="search-trigger" id="search-trigger"><span>⌕</span><span class="search-copy">Search documentation</span><kbd>⌘ K</kbd></button>
+            <a class="top-link" href="https://discord.gg/" target="_blank" rel="noreferrer">Support <span>↗</span></a>
+            <a class="top-link" href="https://github.com/" target="_blank" rel="noreferrer">GitHub <span>↗</span></a>
+          </div>
+        </header>
+
+        <section class="content-wrap">
+          <div class="content-column" id="content-column">
+            <div id="page-content"></div>
+            <footer class="page-footer" id="page-footer"></footer>
+          </div>
+          <aside class="toc" id="toc" aria-label="On this page"></aside>
+        </section>
+      </main>
+    </div>
+
+    <div class="search-layer" id="search-layer" hidden>
+      <div class="search-dialog" role="dialog" aria-modal="true" aria-label="Search documentation">
+        <div class="search-dialog-head"><span class="icon">⌕</span><input id="search-input" type="search" placeholder="Search pages, commands, exports..." autofocus /><button class="icon-button" id="search-close" aria-label="Close search">×</button></div>
+        <div class="search-results" id="search-results"><div class="search-empty">Type to search the docs.</div></div>
+        <div class="search-hint"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>Enter</kbd> open</span><span><kbd>Esc</kbd> close</span></div>
+      </div>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

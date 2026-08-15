@@ -86,15 +86,15 @@ local function getUnitSnapshot()
         local label = GetLabelText(GetDisplayNameFromVehicleModel(model))
         local vehicleClass = GetVehicleClass(vehicle)
         local movementType = 'VEHICLE'
-        if IsThisModelABike(model) or vehicleClass == 8 then
+        if vehicleClass == 8 then
             movementType = 'MOTORCYCLE'
-        elseif IsThisModelAHeli(model) or vehicleClass == 15 then
+        elseif vehicleClass == 15 then
             movementType = 'HELICOPTER'
-        elseif IsThisModelAPlane(model) or vehicleClass == 16 then
+        elseif vehicleClass == 16 then
             movementType = 'AIRCRAFT'
-        elseif IsThisModelABoat(model) or vehicleClass == 14 then
+        elseif vehicleClass == 14 then
             movementType = 'BOAT'
-        elseif IsThisModelATank(model) then
+        elseif vehicleClass == 19 then
             movementType = 'TANK'
         end
         snapshot.vehicle = {
@@ -115,12 +115,6 @@ end
 local function getReadableWeaponName()
     local weapon = GetSelectedPedWeapon(PlayerPedId())
     if not weapon or weapon == 0 or weapon == joaat('WEAPON_UNARMED') then return nil end
-
-    local labelKey = GetWeaponDisplayNameFromHash(weapon)
-    if labelKey and labelKey ~= '' and labelKey ~= 'NULL' then
-        local label = GetLabelText(labelKey)
-        if label and label ~= '' and label ~= 'NULL' then return label end
-    end
 
     local groups = {
         [joaat('GROUP_PISTOL')] = 'Pistol',

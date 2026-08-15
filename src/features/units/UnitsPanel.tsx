@@ -343,8 +343,36 @@ export function UnitsPanel() {
             </article>;
           })}
           {!tacChannels.length && <div className="tac-empty">No open TAC channels.</div>}
-          {dispatcher && <div className="tac-actions"><button onClick={() => setShowTacForm((open) => !open)}><Plus /> Create TAC</button></div>}
-          {dispatcher && showTacForm && <form className="tac-form tac-actions" onSubmit={(event) => { event.preventDefault(); if (!tacName.trim() || !tacLabel.trim()) return; action("tacCreate", { channel: { name: tacName.trim(), label: tacLabel.trim() } }); setTacName(""); setTacLabel(""); setShowTacForm(false); }}><input value={tacName} maxLength={16} placeholder="TAC name" onChange={(event) => setTacName(event.target.value)} /><input value={tacLabel} maxLength={64} placeholder="Channel label" onChange={(event) => setTacLabel(event.target.value)} /><button type="submit">Create</button></form>}
+          {dispatcher && (
+            <div className="tac-create-actions">
+              <button type="button" onClick={() => setShowTacForm((open) => !open)}>
+                <Plus /> {showTacForm ? "Cancel" : "Create TAC"}
+              </button>
+            </div>
+          )}
+          {dispatcher && showTacForm && (
+            <form
+              className="tac-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!tacName.trim() || !tacLabel.trim()) return;
+                action("tacCreate", { channel: { name: tacName.trim(), label: tacLabel.trim() } });
+                setTacName("");
+                setTacLabel("");
+                setShowTacForm(false);
+              }}
+            >
+              <label>
+                <span>TAC name</span>
+                <input value={tacName} maxLength={16} placeholder="e.g. TAC 1" onChange={(event) => setTacName(event.target.value)} />
+              </label>
+              <label>
+                <span>Channel label</span>
+                <input value={tacLabel} maxLength={64} placeholder="e.g. Downtown operations" onChange={(event) => setTacLabel(event.target.value)} />
+              </label>
+              <button type="submit" disabled={!tacName.trim() || !tacLabel.trim()}>Create TAC</button>
+            </form>
+          )}
         </div>
       </div>}
     </aside>
