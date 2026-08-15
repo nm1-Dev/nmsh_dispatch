@@ -201,9 +201,9 @@ svg {
 
 .dispatch-header {
   height: 38px;
-  display: flex;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   padding: 0 8px;
   border-bottom: 1px solid var(--border-soft);
@@ -211,25 +211,14 @@ svg {
   color: var(--text-secondary);
 }
 
-.header-left,
-.header-right,
 .normal-status {
   min-width: 0;
   display: flex;
   align-items: center;
 }
 
-.header-left {
-  flex: 1;
-  gap: 4px;
-  overflow: hidden;
-}
-
-.header-right {
-  flex-shrink: 0;
-}
-
 .normal-status {
+  justify-self: end;
   gap: 5px;
 }
 
@@ -290,9 +279,8 @@ svg {
 }
 
 .alert-count {
-  min-width: 27px;
-  margin-left: 1px;
-  padding: 1px 5px 0;
+  min-width: 0;
+  padding: 1px 5px;
   color: #c6c8cd;
   font-family: "Barlow Condensed", Arial, sans-serif;
   font-size: 11px;
@@ -301,11 +289,9 @@ svg {
 }
 
 .department-label {
-  margin-left: 1px;
+  justify-self: center;
   min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  display: block;
   overflow: hidden;
   color: #898c94;
   font-family: "Barlow Condensed", Arial, sans-serif;
@@ -327,8 +313,7 @@ svg {
 }
 
 .department-label b {
-  color: #4c4f57;
-  font-weight: 400;
+  display: none;
 }
 
 .brand-mark,
@@ -347,7 +332,7 @@ svg {
 }
 
 .priority-badge {
-  min-width: 36px;
+  min-width: 0;
   padding: 2px 6px 1px;
   font-family: "Barlow Condensed", Arial, sans-serif;
   font-size: 10.5px;
@@ -503,7 +488,7 @@ svg {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 4px;
   margin-bottom: 3px;
   line-height: 1;
 }

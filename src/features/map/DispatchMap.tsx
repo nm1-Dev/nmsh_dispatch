@@ -85,15 +85,18 @@ export function DispatchMap() {
     if (!container.current || mapRef.current) return;
     const map = L.map(container.current, {
       crs,
-      minZoom: 2,
+      minZoom: 3,
       maxZoom: 5,
+      zoomSnap: 1,
+      zoomDelta: 1,
+      wheelPxPerZoomLevel: 100,
       zoomControl: false,
       attributionControl: false,
       maxBounds: bounds,
       maxBoundsViscosity: 1,
     }).setView([-850, 100], 3);
     L.tileLayer("assets/maps/styleAtlas/{z}/{x}/{y}.jpg", {
-      minZoom: 2,
+      minZoom: 3,
       maxZoom: 5,
       noWrap: true,
       bounds,

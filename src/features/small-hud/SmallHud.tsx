@@ -4,7 +4,6 @@ import {
   Info,
   Move,
   RotateCcw,
-  Users,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -12,7 +11,6 @@ import { isNui, nui } from "../../lib/nui";
 import { formatAge } from "../../lib/utils";
 import { useHudStore } from "../../stores/hud-store";
 import type { HudAlert } from "../../types/dispatch";
-import { IncidentIcon } from "../../components/IncidentIcon";
 
 const previewAlert: HudAlert = {
   id: "preview",
@@ -67,6 +65,8 @@ export function SmallHud() {
     top: number;
   } | null>(null);
   const priority = alert?.priority || "LOW";
+  const priorityLabel =
+    priority === 1 ? "HIGH" : priority === 2 ? "MED" : priority === 3 ? "LOW" : priority;
   const priorityClass =
     priority === "PANIC" || priority === "HIGH" || priority === 1
       ? "priority-1"
@@ -176,7 +176,7 @@ export function SmallHud() {
       )}
       <motion.section
         key={alert?.id || (store.empty ? "empty" : "alert")}
-        className={`dispatch-card ${priorityClass} ${priority === "PANIC" ? "is-panic-arrival" : "is-normal-arrival"} ${store.empty ? "is-empty" : ""} ${alert?.responded ? "is-responding" : ""} ${(alert?.responders?.length || 0) > 0 ? "has-responders" : ""} ${cursor ? "is-cursor-active" : ""} ${store.details && details.length ? "is-expanded" : ""}`}
+        className={`dispatch-card ${priorityClass} ${priority === "PANIC" ? "is-panic-arrival" : "is-normal-arrival"} ${store.empty ? "is-empty" : ""} ${alert?.responded ? "is-responding" : ""} ${cursor ? "is-cursor-active" : ""} ${store.details && details.length ? "is-expanded" : ""}`}
         data-priority={priority}
         aria-live="polite"
         initial={{ opacity: 0, x: 18 }}
@@ -194,19 +194,14 @@ export function SmallHud() {
       >
         <div className="priority-edge" />
         <header className="dispatch-header">
-          <div className="header-left">
-            <span className="alert-count status-badge">
-              {store.empty ? "0" : `${store.index || 1}/${store.total || 1}`}
-            </span>
-            <span className="department-label">
-              <span className="brand-mark" />
-              <span>{alert?.department || store.department}</span>
+          <span className="alert-count status-badge">
+            {store.empty ? "0/0" : `${store.index || 1}/${store.total || 1}`}
+          </span>
+          <span className="department-label">
+            {alert?.department || store.department} {alert?.channel || store.channel}
               <b>•</b>
-              <span>{alert?.channel || store.channel}</span>
             </span>
-          </div>
-          <div className="header-right">
-            <div className="normal-status">
+          <div className="normal-status">
               <time>
                 {alert?.createdAt ? `${formatAge(alert.createdAt)} ago` : ""}
               </time>
@@ -215,10 +210,7 @@ export function SmallHud() {
                   CLEAR
                 </button>
               )}
-              {!store.empty && (
-                <span className="priority-badge">{priority}</span>
-              )}
-            </div>
+              {!store.empty && <span className="priority-badge">{priorityLabel}</span>}
           </div>
         </header>
         <main className="alert-content">
@@ -234,15 +226,6 @@ export function SmallHud() {
           ) : (
             <>
               <div className="call-heading">
-                <span className="call-type-icon">
-                  <IncidentIcon title={alert?.title} code={alert?.code} />
-                </span>
-                {(alert?.responders?.length || 0) > 0 && (
-                  <span className="unit-response status-badge">
-                    <Users />
-                    <span>{alert?.responders?.length}</span>
-                  </span>
-                )}
                 <span className="call-code">{alert?.code}</span>
                 <span className="heading-divider">•</span>
                 <h1>{alert?.title}</h1>
